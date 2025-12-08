@@ -51,7 +51,7 @@ def parse_arguments():
 
 def fill_prompt_template_encryption_method(ciphertext, encryption_method, space_delimeter):
     if space_delimeter:
-        llama_prompt_template = f"Given the with space delimeters between characters: '{ciphertext}' "
+        llama_prompt_template = f"Given the ciphertext with space delimeters between characters: '{ciphertext}' "
     else:
         llama_prompt_template = f"Given the ciphertext: '{ciphertext}' "
     llama_prompt_template += f"and the encryption method '{encryption_method}', decrypt the ciphertext and respond with the plaintext."
@@ -234,28 +234,61 @@ def get_llama_responses(model_name, llama_prompts, output_dir, space_delimeter, 
         json.dump(llama_responses, outfile)
     return llama_responses
 
-def get_accuracy(llama_responses, dataset):
+def get_accuracy(llama_responses, dataset, pass_encryption_method):
     correct = 0
     total = len(llama_responses)
     for i, example in enumerate(dataset):
-        true_method = example['algorithm']
-        if 'Cipher' in true_method:
-            cipher_index = true_method.index('Cipher')
-            true_method = true_method[:cipher_index].strip()
-        predicted_method = llama_responses[i].strip()
+        if not pass_encryption_method:
+            true_method = example['algorithm']
+            if 'Cipher' in true_method:
+                cipher_index = true_method.index('Cipher')
+                true_method = true_method[:cipher_index].strip()
+            predicted_method = llama_responses[i].strip()
 
-        if 'é' in true_method or 'è' in true_method:
-            true_method = true_method.replace('é', 'e')
-            true_method = true_method.replace('è', 'e')
-        if 'é' in predicted_method:
-            predicted_method = predicted_method.replace('é', 'e')
-            predicted_method = predicted_method.replace('è', 'e')
-        if i < 30:
-            print(f'Example {i}: True method: {true_method}, Predicted method: {predicted_method}')
-        if true_method == predicted_method:
-            correct += 1
+            if 'é' in true_method or 'è' in true_method:
+                true_method = true_method.replace('é', 'e')
+                true_method = true_method.replace('è', 'e')
+            if 'é' in predicted_method:
+                predicted_method = predicted_method.replace('é', 'e')
+                predicted_method = predicted_method.replace('è', 'e')
+            if i < 30:
+                print(f'Example {i}: True method: {true_method}, Predicted method: {predicted_method}')
+            if true_method == predicted_method:
+                correct += 1
+        else:
+            true_plaintext = example['plain_text']
+            predicted_plaintext = llama_responses[i]
+            if i < 30:
+                print(f'Example {i}: True method: {true_plaintext}, Predicted method: {predicted_plaintext}')
+            if true_plaintext == predicted_plaintext:
+                correct += 1
     accuracy = float(correct/total)
     return accuracy
+
+def calculate_nl(true_text, pred_text):
+    import Levenshtein
+    """
+    Calculate the normalized levenshtein distance between two strings
+    Outputs a number between 0 and 1.
+    Higher is better.
+    """
+    dist = Levenshtein.distance(true_text, pred_text)
+    # 2. Get the max length between the two strings
+    max_len = max(len(true_text), len(pred_text))
+    # Check if both strings are empty
+    if max_len == 0:
+        return 1.0 if dist == 0 else 0.0
+    # 3. Calculate Normalized Levenshtein Metric
+    nl_score = 1.0 - (dist / max_len)
+    return nl_score
+
+def compute_averaged_nl(llama_responses, dataset):
+    distance = 0
+    for i, example in enumerate(dataset):
+        true_plaintext = example['plain_text']
+        predicted_plaintext = llama_responses[i]
+        distance += calculate_nl(true_plaintext, predicted_plaintext)
+    return float(distance/len(dataset))
 
 def main(output_dir, model_name, space_delimeter, pass_encryption_method, pass_plaintext):
     if not os.path.exists(output_dir):
@@ -264,9 +297,11 @@ def main(output_dir, model_name, space_delimeter, pass_encryption_method, pass_p
     dataset = load_dataset("Sakonii/EncryptionDataset", split="train")
     llama_prompts = create_llama_prompts(dataset, output_dir, space_delimeter, pass_encryption_method, pass_plaintext)
     llama_responses= get_llama_responses(model_name, llama_prompts, output_dir, space_delimeter, pass_encryption_method, pass_plaintext)
-    accuracy = get_accuracy(llama_responses, dataset)
+    accuracy = get_accuracy(llama_responses, dataset, pass_encryption_method)
     print(f'Accuracy for model name: {model_name}, space delimeter: {space_delimeter}, pass encryption method: {pass_encryption_method}, ' + \
           f'pass plaintext: {pass_plaintext} is {accuracy}')
+    averaged_nl = compute_averaged_nl(llama_responses, dataset)
+    print(f'Averaged normalized Levenshtein distances is {averaged_nl}')
     # else:
     #     llama_responses = read_llama_responses_dict(output_dir=llama_output_dir)
     # llama_response_item_titles = get_llama_response_item_titles(llama_responses, random_sampling_dict)
