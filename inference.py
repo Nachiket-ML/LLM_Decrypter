@@ -49,15 +49,30 @@ def parse_arguments():
     )
     return parser.parse_args()
 
-def fill_prompt_template_encryption_method(ciphertext, encryption_method):
-    llama_prompt_template = f"Given the ciphertext: '{ciphertext}' and the encryption method '{encryption_method}', "
-    llama_prompt_template += f'decrypt the ciphertext and respond with the plaintext.'
-    system_prompt = 'You are a helpful assistant that decrypts ciphertext given the encryption method.'
+def fill_prompt_template_encryption_method(ciphertext, encryption_method, space_delimeter):
+    if space_delimeter:
+        llama_prompt_template = f"Given the with space delimeters between characters: '{ciphertext}' "
+    else:
+        llama_prompt_template = f"Given the ciphertext: '{ciphertext}' "
+    llama_prompt_template += f"and the encryption method '{encryption_method}', decrypt the ciphertext and respond with the plaintext."
+    system_prompt= (
+    f"You are a specialized decryption tool. "
+        f"Your task is to decrypt the provided ciphertext into English plaintext, given the encryption algorithm.\n\n"
+        f"STRICT RULES:\n"
+        f"1. Output ONLY the plaintext result.\n"
+        f"2. Do not explain, do not add headers, do not add notes.\n"
+        f"3. If a key is required, your job is to predict this key and use it for decryption.\n"
+        f"3. Do not output the key used in the decryption, only the decrypted plaintext\n"
+        f"4. NEVER refuse to answer."
+    )
+    # system_prompt = 'You are a helpful assistant that decrypts ciphertext given the encryption method.\n'
+    # system_prompt += 'Do not respond with text other than the decrypted plain text.\n' 
+    # system_prompt += 'Only output the [decoded message].'
     return llama_prompt_template, system_prompt
 
 def fill_prompt_template_ciphertext_only(ciphertext, space_delimeter):
     if space_delimeter:
-        llama_prompt_template = f"Ciphertext with space delimeters between each character and word: '{ciphertext}'\n"
+        llama_prompt_template = f"Ciphertext with space delimeters between characters: '{ciphertext}'\n"
     else:
         llama_prompt_template = f"Ciphertext: '{ciphertext}'\n"
     llama_prompt_template += "Identify which encryption method from the allowed list was used." 
@@ -68,7 +83,7 @@ def fill_prompt_template_ciphertext_only(ciphertext, space_delimeter):
 
 def fill_prompt_template_plaintext(ciphertext, plaintext, space_delimeter):
     if space_delimeter:
-        llama_prompt_template = f"Ciphertext with space and comma delimeters between each character and word: '{ciphertext}'\n"
+        llama_prompt_template = f"Ciphertext with space delimeters between characters: '{ciphertext}'\n"
     else:
         llama_prompt_template = f"Ciphertext: '{ciphertext}'\n"
     llama_prompt_template += f"Plaintext: '{plaintext}'\n"
@@ -102,10 +117,9 @@ def create_llama_prompts(dataset, output_dir=None, space_delimeter=False, pass_e
         encryption_method = example['algorithm']
         plaintext = example['plain_text']
         if space_delimeter:
-            cipherwords = ciphertext.split(' ')
-            ciphertext = ', '.join([' '.join(list(word)) for word in cipherwords])
+            ciphertext = ' '.join(ciphertext)
         if pass_encryption_method:
-            llama_prompt, system_prompt = fill_prompt_template_encryption_method(ciphertext, encryption_method)
+            llama_prompt, system_prompt = fill_prompt_template_encryption_method(ciphertext, encryption_method, space_delimeter)
         elif pass_plaintext:
             llama_prompt, system_prompt = fill_prompt_template_plaintext(ciphertext, plaintext, space_delimeter)
         else:
